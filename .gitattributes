@@ -1,0 +1,14 @@
+# The project code is Duckling (.dk). GitHub Linguist does not know the language yet;
+# these lines name it explicitly until it does.
+*.dk  linguist-language=Duckling
+*.dks linguist-language=Duckling
+
+# Always LF line endings in source files.
+*.dk   text eol=lf
+*.dks  text eol=lf
+*.c    text eol=lf
+*.js   text eol=lf
+*.html text eol=lf
+*.csv  text eol=lf
+*.yaml text eol=lf
+Makefile text eol=lf

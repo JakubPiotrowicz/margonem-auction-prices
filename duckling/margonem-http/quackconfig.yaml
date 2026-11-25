@@ -1,0 +1,13 @@
+metadata:
+  name: margonem-http
+  version: '1.0.0'
+  description: Minimal HTTP/1.1 requests and text or HTML responses
+dependencies:
+  net:
+    source:
+      name: margonem-net
+      path: ../margonem-net
+  string-utils:
+    source:
+      name: margonem-string-utils
+      path: ../margonem-string-utils

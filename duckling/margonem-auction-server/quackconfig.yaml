@@ -1,0 +1,25 @@
+metadata:
+  name: margonem-auction-server
+  version: '1.0.0'
+  description: Local server of the Margonem auction prices add-on
+dependencies:
+  net:
+    source:
+      name: margonem-net
+      path: ../margonem-net
+  http:
+    source:
+      name: margonem-http
+      path: ../margonem-http
+  string-utils:
+    source:
+      name: margonem-string-utils
+      path: ../margonem-string-utils
+  files:
+    source:
+      name: margonem-files
+      path: ../margonem-files
+  auction_prices:
+    source:
+      name: margonem-auction-prices
+      path: ../margonem-auction-prices

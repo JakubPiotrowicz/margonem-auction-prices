@@ -1,0 +1,169 @@
+#{
+    Text helpers missing from the Duckling standard library.
+    All positions are byte offsets into `str`.
+#}
+import core.builtins.*;
+import core.containers.*;
+
+#{
+    Copies the bytes from `start` up to, but not including, `end`.
+#}
+fun substring(text: str, start: i64, end: i64) -> String = {
+    var result: String;
+    var index = start;
+    while (index < end) {
+        result.append(text[index]);
+        index += 1;
+    }
+    return result;
+}
+
+#{
+    Returns the position of the first `fragment` at or after `start`.
+#}
+fun findText(text: str, fragment: str, start: i64) -> ?i64 = {
+    var position = start;
+    while (position + fragment.length() <= text.length()) {
+        if (matchesAt(text, fragment, position, false)) {
+            return position;
+        }
+        position += 1;
+    }
+    return none;
+}
+
+fun textEquals(left: str, right: str) -> bool = {
+    return left.length() == right.length() and matchesAt(left, right, 0, false);
+}
+
+#{
+    Checks whether `fragment` occurs in `text` starting exactly at `position`.
+    `ignoreCase` compares ASCII letters without regard to case.
+#}
+fun matchesAt(text: str, fragment: str, position: i64, ignoreCase: bool) -> bool = {
+    if (position + fragment.length() > text.length()) {
+        return false;
+    }
+    var index = 0;
+    while (index < fragment.length()) {
+        var left = text[position + index];
+        var right = fragment[index];
+        if (ignoreCase) {
+            left = toLower(left);
+            right = toLower(right);
+        }
+        if (left != right) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+#{
+    Lowers only ASCII letters A-Z; other bytes, including parts of Polish letters, stay unchanged.
+#}
+fun toLower(letter: char) -> char = {
+    if (letter >= 'A' and letter <= 'Z') {
+        return (letter as u8 + 32u8) as char;
+    }
+    return letter;
+}
+
+#{
+    Splits `text` at every `separator`; the separators are not kept.
+    An empty `text` gives one empty part.
+#}
+fun split(text: str, separator: char) -> List[String] = {
+    var parts: List[String];
+    var current: String;
+    var index: i64 = 0;
+    while (index < text.length()) {
+        if (text[index] == separator) {
+            parts.push(move current);
+            var next: String;
+            current = move next;
+        } else {
+            current.append(text[index]);
+        }
+        index += 1;
+    }
+    parts.push(move current);
+    return parts;
+}
+
+#{
+    Splits `text` into lines, accepting both `\n` and `\r\n` endings and skipping empty lines.
+#}
+fun nonEmptyLines(text: str) -> List[String] = {
+    var lines: List[String];
+    var current: String;
+    var index: i64 = 0;
+    while (index < text.length()) {
+        let letter = text[index];
+        index += 1;
+        if (letter == '\r') {
+            continue;
+        }
+        if (letter != '\n') {
+            current.append(letter);
+            continue;
+        }
+        if (current.length() > 0) {
+            lines.push(move current);
+            var next: String;
+            current = move next;
+        }
+    }
+    if (current.length() > 0) {
+        lines.push(move current);
+    }
+    return lines;
+}
+
+#{
+    Finds the line `key=value` in `text` (lines separated by `\n`) and returns `value`.
+#}
+fun lineValue(text: str, key: str) -> ?String = {
+    var lineStart: i64 = 0;
+    while (lineStart < text.length()) {
+        let lineEnd = findText(text, "\n", lineStart).valueOr(text.length());
+        let separator = lineStart + key.length();
+        let hasKey = separator < lineEnd and text[separator] == '=';
+        if (hasKey and matchesAt(text, key, lineStart, false)) {
+            return substring(text, separator + 1, lineEnd);
+        }
+        lineStart = lineEnd + 1;
+    }
+    return none;
+}
+
+#{
+    Reads a whole number written only with digits 0-9.
+#}
+fun parseNonNegativeInteger(text: str) -> ?i64 = {
+    if (text.length() == 0) {
+        return none;
+    }
+    var value: i64 = 0;
+    var index: i64 = 0;
+    while (index < text.length()) {
+        if (text[index] < '0' or text[index] > '9') {
+            return none;
+        }
+        value = value * 10 + (text[index] as i64 - '0' as i64);
+        index += 1;
+    }
+    return value;
+}
+
+fun contains(text: str, letter: char) -> bool = {
+    var index: i64 = 0;
+    while (index < text.length()) {
+        if (text[index] == letter) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}

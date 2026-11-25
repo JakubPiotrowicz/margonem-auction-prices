@@ -1,0 +1,71 @@
+#{
+    TCP connections on 127.0.0.1. The socket calls live in `c/net_socket.c`.
+#}
+import core.builtins.*;
+import core.containers.*;
+
+extern("C") {
+    fundecl net_listen_local(port: i64) -> i64;
+    fundecl net_accept(listener: i64) -> i64;
+    fundecl net_receive(descriptor: i64, buffer: cptr mut char, capacity: i64) -> i64;
+    fundecl net_send_all(descriptor: i64, data: cptr char, length: i64) -> i64;
+    fundecl net_close(descriptor: i64);
+}
+
+class Connection {
+    descriptor: i64;
+
+    #{
+        Appends the next chunk of received bytes to `target`.
+        Returns false when the peer closed the connection or an error occurred.
+    #}
+    fun receiveInto(target: ref mut String) -> bool = {
+        var buffer: char[4096];
+        let received = net_receive(descriptor, &buffer[0] as cptr mut char, 4096);
+        var index = 0;
+        while (index < received) {
+            target.append(buffer[index]);
+            index += 1;
+        }
+        return received > 0;
+    }
+
+    #{
+        Sends all of `data`. Returns false when the connection broke before everything was sent.
+    #}
+    fun send(data: str) -> bool = {
+        let start = builtins.ptr_from_slice[char](data) as cptr char;
+        return net_send_all(descriptor, start, data.length()) == data.length();
+    }
+
+    fun close() -> () = {
+        net_close(descriptor);
+    }
+}
+
+class Listener {
+    descriptor: i64;
+
+    #{
+        Waits until the next client connects.
+    #}
+    fun accept() -> ?Connection = {
+        let client = net_accept(descriptor);
+        if (client < 0) {
+            return none;
+        }
+        return Connection(client);
+    }
+}
+
+#{
+    Starts listening on `port` of 127.0.0.1 only, so other computers cannot connect.
+    Returns none when the port cannot be opened, e.g. it is already taken.
+#}
+fun listenLocal(port: i64) -> ?Listener = {
+    let descriptor = net_listen_local(port);
+    if (descriptor < 0) {
+        return none;
+    }
+    return Listener(descriptor);
+}

@@ -1,0 +1,4 @@
+metadata:
+  name: margonem-string-utils
+  version: '1.0.0'
+  description: Text helpers missing from the Duckling standard library

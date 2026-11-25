@@ -1,0 +1,6 @@
+metadata:
+  name: margonem-net
+  version: '1.0.0'
+  description: TCP connections on 127.0.0.1 through a small C layer
+  external-libs: [net_socket]
+  external-lib-paths: [c/build]

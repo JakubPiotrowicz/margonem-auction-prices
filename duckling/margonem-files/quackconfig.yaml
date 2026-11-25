@@ -1,0 +1,4 @@
+metadata:
+  name: margonem-files
+  version: '1.0.0'
+  description: Reading and writing whole files through the C standard library

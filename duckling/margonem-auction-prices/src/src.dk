@@ -1,0 +1,343 @@
+#{
+    Prices of items listed on the Margonem auction house, one entry per item and server,
+    kept in a CSV file with `;` between fields. Gold is stored in millions (1g = 1000m).
+    Prices are for `pieceCount` pieces, so stackable items compare by the price of one piece.
+#}
+import core.builtins.*;
+import core.containers.*;
+import files;
+import string_utils;
+
+let csvHeader = "serwer;nazwa;poziom;typ;profesje;ranga;ulepszenie;platne_odwiazanie;liczba;licytacja_m;kup_teraz_m;smocze_lzy;data;grafika";
+let fieldCount: i64 = 14;
+
+class PriceEntry {
+    server: String;
+    name: String;
+    level: i64;
+    itemType: String;
+    professions: String;
+    rank: String;
+    enhancement: i64;
+    paidUnbinding: bool;
+    pieceCount: i64;
+    bidMillions: ?i64;
+    buyNowMillions: ?i64;
+    dragonTears: ?i64;
+    date: String;
+    iconUrl: ?String;
+}
+
+class Added {
+    entry: PriceEntry;
+}
+
+class Unchanged {
+    entry: PriceEntry;
+}
+
+class Replaced {
+    previous: PriceEntry;
+}
+
+class Conflict {
+    existing: PriceEntry;
+}
+
+class PriceDatabase {
+    path: String;
+    entries: List[PriceEntry];
+}
+
+#{
+    True when both entries describe the same item, whatever the server.
+#}
+fun sameItem(left: ref PriceEntry, right: ref PriceEntry) -> bool = {
+    return string_utils.textEquals(left.name.asSlice(), right.name.asSlice())
+        and left.level == right.level
+        and string_utils.textEquals(left.itemType.asSlice(), right.itemType.asSlice())
+        and string_utils.textEquals(left.professions.asSlice(), right.professions.asSlice())
+        and string_utils.textEquals(left.rank.asSlice(), right.rank.asSlice())
+        and left.enhancement == right.enhancement
+        and left.paidUnbinding == right.paidUnbinding;
+}
+
+fun sameItemAndServer(left: ref PriceEntry, right: ref PriceEntry) -> bool = {
+    let sameServer = string_utils.textEquals(left.server.asSlice(), right.server.asSlice());
+    return sameItem(left, right) and sameServer;
+}
+
+#{
+    Gold prices are compared per piece; Dragon Tears are set by the game and compared as they are.
+#}
+fun samePrices(left: ref PriceEntry, right: ref PriceEntry) -> bool = {
+    let leftCount = left.pieceCount;
+    let rightCount = right.pieceCount;
+    return samePricePerPiece(&left.bidMillions, leftCount, &right.bidMillions, rightCount)
+        and samePricePerPiece(&left.buyNowMillions, leftCount, &right.buyNowMillions, rightCount)
+        and samePricePerPiece(&left.dragonTears, 1, &right.dragonTears, 1);
+}
+
+#{
+    Compares `leftPrice / leftPieceCount` with `rightPrice / rightPieceCount` without fractions.
+#}
+fun samePricePerPiece(
+    leftPrice: ref ?i64, leftPieceCount: i64, rightPrice: ref ?i64, rightPieceCount: i64
+) -> bool = {
+    if (leftPrice.isEmpty() or rightPrice.isEmpty()) {
+        return leftPrice.isEmpty() and rightPrice.isEmpty();
+    }
+    return leftPrice.value() * rightPieceCount == rightPrice.value() * leftPieceCount;
+}
+
+fun optionalToText(value: ref ?i64) -> String = {
+    if (value.isEmpty()) {
+        var empty: String;
+        return empty;
+    }
+    return value.value().toString();
+}
+
+#{
+    A price field is valid when it is empty (no price) or a whole number.
+#}
+fun isValidPriceText(text: str) -> bool = {
+    return text.length() == 0 or string_utils.parseNonNegativeInteger(text).nonEmpty();
+}
+
+fun priceFromText(text: str) -> ?i64 = {
+    return string_utils.parseNonNegativeInteger(text);
+}
+
+fun hasForbiddenLetter(text: str) -> bool = {
+    return string_utils.contains(text, ';') or string_utils.contains(text, '\n')
+        or string_utils.contains(text, '\r');
+}
+
+#{
+    An empty CSV field means the value is not known.
+#}
+fun optionalText(text: str) -> ?String = {
+    if (text.length() == 0) {
+        return none;
+    }
+    return text.toString();
+}
+
+fun toCsvLine(entry: ref PriceEntry) -> String = {
+    var line = copy entry.server;
+    line.append(';');
+    line.append(&entry.name);
+    line.append(';');
+    line.append(entry.level.toString());
+    line.append(';');
+    line.append(&entry.itemType);
+    line.append(';');
+    line.append(&entry.professions);
+    line.append(';');
+    line.append(&entry.rank);
+    line.append(';');
+    line.append(entry.enhancement.toString());
+    line.append(';');
+    if (entry.paidUnbinding) {
+        line.append("tak");
+    } else {
+        line.append("nie");
+    }
+    line.append(';');
+    line.append(entry.pieceCount.toString());
+    line.append(';');
+    line.append(optionalToText(&entry.bidMillions));
+    line.append(';');
+    line.append(optionalToText(&entry.buyNowMillions));
+    line.append(';');
+    line.append(optionalToText(&entry.dragonTears));
+    line.append(';');
+    line.append(&entry.date);
+    line.append(';');
+    if (entry.iconUrl.nonEmpty()) {
+        line.append(entry.iconUrl.value().asSlice());
+    }
+    return line;
+}
+
+#{
+    Builds an entry from text fields given in CSV column order.
+    Returns none when a field is missing or invalid, e.g. a level that is not a number.
+#}
+fun entryFromFields(fields: ref List[String]) -> ?PriceEntry = {
+    if (fields.length() != fieldCount) {
+        return none;
+    }
+    var index: i64 = 0;
+    while (index < fields.length()) {
+        if (hasForbiddenLetter(fields.pointer[index].asSlice())) {
+            return none;
+        }
+        index += 1;
+    }
+
+    let level = string_utils.parseNonNegativeInteger(fields.pointer[2].asSlice());
+    let enhancement = string_utils.parseNonNegativeInteger(fields.pointer[6].asSlice());
+    let unbinding = fields.pointer[7].asSlice();
+    let isYes = string_utils.textEquals(unbinding, "tak");
+    let isNo = string_utils.textEquals(unbinding, "nie");
+    let pieceCount = string_utils.parseNonNegativeInteger(fields.pointer[8].asSlice());
+    let pricesValid = isValidPriceText(fields.pointer[9].asSlice())
+        and isValidPriceText(fields.pointer[10].asSlice())
+        and isValidPriceText(fields.pointer[11].asSlice());
+    let keyValid = fields.pointer[0].length() > 0 and fields.pointer[1].length() > 0;
+    let numbersValid = level.nonEmpty() and enhancement.nonEmpty() and pieceCount.nonEmpty();
+    if (not numbersValid or not (isYes or isNo) or not pricesValid or not keyValid) {
+        return none;
+    }
+    if (enhancement.value() > 5 or pieceCount.value() == 0) {
+        return none;
+    }
+
+    return PriceEntry(
+        copy fields.pointer[0],
+        copy fields.pointer[1],
+        level.value(),
+        copy fields.pointer[3],
+        copy fields.pointer[4],
+        copy fields.pointer[5],
+        enhancement.value(),
+        isYes,
+        pieceCount.value(),
+        priceFromText(fields.pointer[9].asSlice()),
+        priceFromText(fields.pointer[10].asSlice()),
+        priceFromText(fields.pointer[11].asSlice()),
+        copy fields.pointer[12],
+        optionalText(fields.pointer[13].asSlice())
+    );
+}
+
+fun entryFromCsvLine(line: str) -> ?PriceEntry = {
+    var fields = string_utils.split(line, ';');
+    return entryFromFields(&fields);
+}
+
+#{
+    Reads an entry sent by the add-on as `key=value` lines, one line per CSV column,
+    with the CSV column names as keys.
+#}
+fun entryFromForm(body: str) -> ?PriceEntry = {
+    let columns = string_utils.split(csvHeader, ';');
+    var fields: List[String];
+    var index: i64 = 0;
+    while (index < columns.length()) {
+        let value = string_utils.lineValue(body, columns.pointer[index].asSlice());
+        if (value.isEmpty()) {
+            return none;
+        }
+        fields.push(copy value.value());
+        index += 1;
+    }
+    return entryFromFields(&fields);
+}
+
+#{
+    Loads the database from `path`. A missing file gives an empty database;
+    lines that are not valid entries are skipped and reported in the terminal.
+#}
+fun load(path: str) -> PriceDatabase = {
+    var entries: List[PriceEntry];
+    let content = files.readText(path);
+    if (content.nonEmpty()) {
+        let lines = string_utils.nonEmptyLines(content.value().asSlice());
+        # Line 0 is the header.
+        var index: i64 = 1;
+        while (index < lines.length()) {
+            let line = lines.pointer[index].asSlice();
+            index += 1;
+            let entry = entryFromCsvLine(line);
+            if (entry.isEmpty()) {
+                var warning = "Pomijam błędny wiersz bazy: ".toString();
+                warning.append(line);
+                warning.append('\n');
+                print(&warning);
+                continue;
+            }
+            entries.push(copy entry.value());
+        }
+    }
+    return PriceDatabase(path.toString(), move entries);
+}
+
+fun save(database: ref PriceDatabase) -> bool = {
+    var content = csvHeader.toString();
+    content.append('\n');
+    var index: i64 = 0;
+    while (index < database.entries.length()) {
+        content.append(toCsvLine(&database.entries.pointer[index]));
+        content.append('\n');
+        index += 1;
+    }
+    return files.replaceText(database.path.asSlice(), content.asSlice());
+}
+
+#{
+    All entries for the same item as `item`, from every server.
+#}
+fun findItem(database: ref PriceDatabase, item: ref PriceEntry) -> List[PriceEntry] = {
+    var found: List[PriceEntry];
+    var index: i64 = 0;
+    while (index < database.entries.length()) {
+        if (sameItem(&database.entries.pointer[index], item)) {
+            found.push(copy database.entries.pointer[index]);
+        }
+        index += 1;
+    }
+    return found;
+}
+
+#{
+    Adds `entry` or, when the item already has an entry on this server, replaces it
+    if `replaceExisting` is true. Different prices without `replaceExisting` give a Conflict
+    and leave the database unchanged. An entry with unchanged prices still takes the icon
+    of `entry` when it had none. Only the in-memory database changes; call `save` after.
+#}
+fun put(database: ref mut PriceDatabase, entry: ref PriceEntry, replaceExisting: bool)
+    -> Added | Unchanged | Replaced | Conflict = {
+    var index: i64 = 0;
+    while (index < database.entries.length()) {
+        if (sameItemAndServer(&database.entries.pointer[index], entry)) {
+            let previous = copy database.entries.pointer[index];
+            if (samePrices(&previous, entry)) {
+                if (previous.iconUrl.isEmpty() and entry.iconUrl.nonEmpty()) {
+                    database.entries.at(index).iconUrl = copy entry.iconUrl;
+                }
+                return Unchanged(move previous);
+            }
+            if (not replaceExisting) {
+                return Conflict(move previous);
+            }
+            database.entries.at(index) = copy entry;
+            return Replaced(move previous);
+        }
+        index += 1;
+    }
+    database.entries.push(copy entry);
+    return Added(copy entry);
+}
+
+#{
+    Removes the entry for the same item and server as `entry` and returns it;
+    none when there is no such entry.
+#}
+fun remove(database: ref mut PriceDatabase, entry: ref PriceEntry) -> ?PriceEntry = {
+    var kept: List[PriceEntry];
+    var removed: ?PriceEntry = none;
+    var index: i64 = 0;
+    while (index < database.entries.length()) {
+        if (sameItemAndServer(&database.entries.pointer[index], entry)) {
+            removed = copy database.entries.pointer[index];
+        } else {
+            kept.push(copy database.entries.pointer[index]);
+        }
+        index += 1;
+    }
+    database.entries = move kept;
+    return removed;
+}

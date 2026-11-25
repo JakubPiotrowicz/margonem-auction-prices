@@ -1,0 +1,10 @@
+# Build results of duck and of the C library.
+.duck_build/
+duckling/margonem-net/c/build/
+
+# duck writes absolute local paths of the local dependencies here; it is recreated on build.
+quackfreeze.json
+
+# Private price database; the empty folder stays.
+duckling/margonem-auction-server/dane/*
+!duckling/margonem-auction-server/dane/.gitkeep

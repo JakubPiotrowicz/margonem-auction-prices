@@ -1,0 +1,210 @@
+#{
+    Local server for the Margonem auction prices add-on, started with `duck run` in this package,
+    so `dane/` and `strona/` are read from here. POST requests carry `key=value` lines:
+    - POST /auction/find - an item, answered with its price entries from all servers as CSV lines;
+    - POST /auction/save - a price entry; the answer's first line says what happened;
+    - POST /auction/delete - an item, removed from the database on its server;
+    - GET /auction/all - every price entry as CSV lines;
+    - GET /worlds - official worlds from `strona/swiaty.csv`;
+    - GET /item-types - the game's item types from `strona/typy.csv`;
+    - GET / - the price editor page from `strona/ceny.html`.
+#}
+import core.builtins.*;
+import core.containers.*;
+import net;
+import http;
+import auction_prices;
+import files;
+import string_utils;
+
+let serverPort: i64 = 48730;
+let databasePath = "dane/ceny.csv";
+let editorPagePath = "strona/ceny.html";
+let worldListPath = "strona/swiaty.csv";
+let itemTypeListPath = "strona/typy.csv";
+
+fun csvLines(entries: ref List[auction_prices.PriceEntry]) -> String = {
+    var lines: String;
+    var index: i64 = 0;
+    while (index < entries.length()) {
+        lines.append(auction_prices.toCsvLine(&entries.pointer[index]));
+        lines.append('\n');
+        index += 1;
+    }
+    return lines;
+}
+
+#{
+    Answers with the CSV lines of every entry for the sent item, one per line.
+#}
+fun answerAuctionFind(connection: ref net.Connection, body: str) -> () = {
+    let parsed = auction_prices.entryFromForm(body);
+    if (parsed.isEmpty()) {
+        http.sendResponse(connection, "400 Bad Request", "Błędne dane przedmiotu");
+        return;
+    }
+    let item = parsed.value();
+    var database = auction_prices.load(databasePath);
+    let found = auction_prices.findItem(&database, &item);
+    http.sendResponse(connection, "200 OK", csvLines(&found).asSlice());
+}
+
+fun statusWithEntry(status: str, entry: ref auction_prices.PriceEntry) -> String = {
+    var text = status.toString();
+    text.append('\n');
+    text.append(auction_prices.toCsvLine(entry));
+    return text;
+}
+
+#{
+    Saves the sent entry. `podmien=tak` replaces an entry with different prices.
+    The answer's first line is `dodano`, `bez_zmian`, `podmieniono` or `konflikt`;
+    after `podmieniono` and `konflikt` the second line is the entry that was in the database.
+#}
+fun answerAuctionSave(connection: ref net.Connection, body: str) -> () = {
+    let parsed = auction_prices.entryFromForm(body);
+    if (parsed.isEmpty()) {
+        http.sendResponse(connection, "400 Bad Request", "Błędne dane wpisu");
+        return;
+    }
+    let entry = parsed.value();
+    let replaceAnswer = string_utils.lineValue(body, "podmien").valueOr("nie".toString());
+    let replaceExisting = string_utils.textEquals(replaceAnswer.asSlice(), "tak");
+
+    var database = auction_prices.load(databasePath);
+    let outcome = auction_prices.put(&database, &entry, replaceExisting);
+    let reply = match (&outcome) {
+        case added: ref auction_prices.Added = "dodano".toString();
+        case unchanged: ref auction_prices.Unchanged = "bez_zmian".toString();
+        case replaced: ref auction_prices.Replaced =
+            statusWithEntry("podmieniono", &replaced.previous);
+        case conflict: ref auction_prices.Conflict =
+            statusWithEntry("konflikt", &conflict.existing);
+    };
+    # An unchanged entry is saved too, because it may have just received its icon.
+    let changed = match (&outcome) {
+        case added: ref auction_prices.Added = true;
+        case unchanged: ref auction_prices.Unchanged = true;
+        case replaced: ref auction_prices.Replaced = true;
+        case conflict: ref auction_prices.Conflict = false;
+    };
+
+    if (changed and not auction_prices.save(&database)) {
+        http.sendResponse(connection, "500 Internal Server Error", "Nie mogę zapisać bazy cen");
+        return;
+    }
+    http.sendResponse(connection, "200 OK", reply.asSlice());
+}
+
+#{
+    Answers with every entry of the database as CSV lines, one per line.
+#}
+fun answerAuctionAll(connection: ref net.Connection) -> () = {
+    var database = auction_prices.load(databasePath);
+    http.sendResponse(connection, "200 OK", csvLines(&database.entries).asSlice());
+}
+
+#{
+    Removes the sent item's entry on its server. Answers `usunieto` or `brak` (no such entry).
+#}
+fun answerAuctionDelete(connection: ref net.Connection, body: str) -> () = {
+    let parsed = auction_prices.entryFromForm(body);
+    if (parsed.isEmpty()) {
+        http.sendResponse(connection, "400 Bad Request", "Błędne dane wpisu");
+        return;
+    }
+    let entry = parsed.value();
+    var database = auction_prices.load(databasePath);
+    let removed = auction_prices.remove(&database, &entry);
+    if (removed.isEmpty()) {
+        http.sendResponse(connection, "200 OK", "brak");
+        return;
+    }
+    if (not auction_prices.save(&database)) {
+        http.sendResponse(connection, "500 Internal Server Error", "Nie mogę zapisać bazy cen");
+        return;
+    }
+    http.sendResponse(connection, "200 OK", "usunieto");
+}
+
+#{
+    Sends the file at `path` with `contentType`, or 500 when the file cannot be read.
+#}
+fun answerFile(connection: ref net.Connection, path: str, contentType: str) -> () = {
+    let content = files.readText(path);
+    if (content.isEmpty()) {
+        var message = "Nie mogę odczytać pliku ".toString();
+        message.append(path);
+        http.sendResponse(connection, "500 Internal Server Error", message.asSlice());
+        return;
+    }
+    http.sendTypedResponse(connection, "200 OK", contentType, content.value().asSlice());
+}
+
+fun handleGet(connection: ref net.Connection, path: str) -> () = {
+    if (string_utils.textEquals(path, "/")) {
+        answerFile(connection, editorPagePath, "text/html; charset=utf-8");
+    } else if (string_utils.textEquals(path, "/worlds")) {
+        answerFile(connection, worldListPath, "text/plain; charset=utf-8");
+    } else if (string_utils.textEquals(path, "/item-types")) {
+        answerFile(connection, itemTypeListPath, "text/plain; charset=utf-8");
+    } else if (string_utils.textEquals(path, "/auction/all")) {
+        answerAuctionAll(connection);
+    } else {
+        http.sendResponse(connection, "404 Not Found", "Nieznany adres");
+    }
+}
+
+#{
+    Reads one request and passes it to the matching answer function.
+    Unknown requests get 404; a request that cannot be read gets no answer.
+#}
+fun handleConnection(connection: ref net.Connection) -> () = {
+    let received = http.readRequest(connection);
+    if (received.isEmpty()) {
+        return;
+    }
+    let request = received.value();
+    let body = request.body.asSlice();
+    let path = request.path.asSlice();
+    let method = request.method.asSlice();
+    if (string_utils.textEquals(method, "GET")) {
+        handleGet(connection, path);
+    } else if (not string_utils.textEquals(method, "POST")) {
+        http.sendResponse(connection, "404 Not Found", "Nieznany adres");
+    } else if (string_utils.textEquals(path, "/auction/find")) {
+        answerAuctionFind(connection, body);
+    } else if (string_utils.textEquals(path, "/auction/save")) {
+        answerAuctionSave(connection, body);
+    } else if (string_utils.textEquals(path, "/auction/delete")) {
+        answerAuctionDelete(connection, body);
+    } else {
+        http.sendResponse(connection, "404 Not Found", "Nieznany adres");
+    }
+}
+
+fun main() -> i64 = {
+    let listening = net.listenLocal(serverPort);
+    if (listening.isEmpty()) {
+        print("Nie mogę otworzyć portu ".toString() ++ serverPort.toString() ++ "\n".toString());
+        return 1;
+    }
+    let listener = listening.value();
+    var startMessage = "Serwer dodatków słucha na http://127.0.0.1:".toString();
+    startMessage.append(serverPort.toString());
+    startMessage.append("\nBaza cen: ");
+    startMessage.append(databasePath);
+    startMessage.append('\n');
+    print(&startMessage);
+
+    while (true) {
+        let accepted = listener.accept();
+        if (accepted.isEmpty()) {
+            continue;
+        }
+        let connection = accepted.value();
+        handleConnection(&connection);
+        connection.close();
+    }
+    return 0;
+}

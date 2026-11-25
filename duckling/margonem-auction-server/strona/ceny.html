@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ceny aukcji Margonem</title>
+<style>
+    :root {
+        --background: #1b1a17;
+        --panel: #26241f;
+        --border: #4a4336;
+        --text: #e8e0c8;
+        --muted: #a89f86;
+        --accent: #f5d76e;
+        --danger: #e07a5f;
+    }
+    body {
+        margin: 0;
+        padding: 16px;
+        background: var(--background);
+        color: var(--text);
+        font: 14px sans-serif;
+    }
+    h1 {
+        margin: 0 0 12px;
+        font-size: 20px;
+        color: var(--accent);
+    }
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        align-items: flex-end;
+        padding: 12px;
+        margin-bottom: 12px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+    .filters label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 12px;
+    }
+    .ranks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+    }
+    .ranks label {
+        flex-direction: row;
+        align-items: center;
+        color: var(--text);
+        font-size: 13px;
+    }
+    input, select, button {
+        background: #13120f;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 4px 6px;
+        font: inherit;
+    }
+    button {
+        cursor: pointer;
+    }
+    button:hover {
+        border-color: var(--accent);
+    }
+    input.price {
+        width: 90px;
+    }
+    input.level {
+        width: 56px;
+    }
+    .level-range {
+        flex-direction: row;
+        gap: 4px;
+    }
+    th.sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    th.sortable:hover {
+        color: var(--text);
+    }
+    th .arrow {
+        margin-left: 4px;
+        color: var(--accent);
+    }
+    th .arrow.inactive {
+        color: var(--border);
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: middle;
+    }
+    th {
+        color: var(--muted);
+        font-weight: normal;
+        font-size: 12px;
+    }
+    /* Slightly larger than in the game (36 px instead of 32 px), with the item shrunk to 28 px,
+       so the picture stays inside the frame. */
+    .item-slot {
+        position: relative;
+        width: 36px;
+        height: 36px;
+    }
+    .item-slot img {
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        width: 32px;
+        height: 32px;
+        object-fit: none;
+        object-position: left top;
+        image-rendering: pixelated;
+        transform: scale(0.875);
+    }
+    /* The game's own rank frames: one sprite, shifted by 32 px per rank, scaled to 36 px. */
+    .item-slot .frame {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 32px;
+        height: 32px;
+        background: url("https://experimental.margonem.pl/img/gui/item_frames/frames/item_frames.png") no-repeat;
+        transform: scale(1.125);
+        transform-origin: 0 0;
+        pointer-events: none;
+    }
+    td.actions {
+        white-space: nowrap;
+    }
+    .status {
+        min-height: 20px;
+        margin-bottom: 8px;
+        color: var(--muted);
+    }
+    .status.error {
+        color: var(--danger);
+    }
+    .differs {
+        margin-left: 6px;
+        color: #e8a33d;
+        cursor: help;
+    }
+    .yes, .no {
+        font-size: 18px;
+        font-weight: bold;
+    }
+    .yes {
+        color: #5cc95c;
+    }
+    .no {
+        color: #e05a4f;
+    }
+    .missing {
+        margin-left: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: help;
+    }
+    .dialog-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 60px;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    .dialog {
+        width: min(760px, 92vw);
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        padding: 16px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+    .dialog h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        color: var(--accent);
+    }
+    .dialog .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        align-items: center;
+        margin: 8px 0;
+    }
+    .dialog label {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+    }
+    .dialog .note {
+        color: var(--muted);
+        font-size: 12px;
+    }
+    tr.state-new td {
+        color: #9fd89f;
+    }
+    tr.state-different td {
+        color: #e8a33d;
+    }
+    tr.state-same td {
+        color: var(--muted);
+    }
+</style>
+</head>
+<body>
+<h1>Ceny aukcji Margonem (Duckling)</h1>
+
+<div class="filters">
+    <label>Świat
+        <select id="world"></select>
+    </label>
+    <label>Nazwa
+        <input id="name" type="search" placeholder="szukaj">
+    </label>
+    <label>Poziom
+        <span class="level-range">
+            <input id="level-min" class="level" type="number" min="0" placeholder="od">
+            <input id="level-max" class="level" type="number" min="0" placeholder="do">
+        </span>
+    </label>
+    <label>Ulepszenie
+        <select id="enhancement">
+            <option value="">wszystkie</option>
+            <option value="0">+0</option>
+            <option value="1">+1</option>
+            <option value="2">+2</option>
+            <option value="3">+3</option>
+            <option value="4">+4</option>
+            <option value="5">+5</option>
+        </select>
+    </label>
+    <label>Typ
+        <select id="item-type"></select>
+    </label>
+    <label>Profesja
+        <select id="profession">
+            <option value="">wszystkie</option>
+            <option value="w">Wojownik</option>
+            <option value="p">Paladyn</option>
+            <option value="b">Tancerz ostrzy</option>
+            <option value="m">Mag</option>
+            <option value="h">Łowca</option>
+            <option value="t">Tropiciel</option>
+        </select>
+    </label>
+    <label>Płatne odwiązanie
+        <select id="unbinding">
+            <option value="">wszystkie</option>
+            <option value="tak">✓ tak</option>
+            <option value="nie">✗ nie</option>
+        </select>
+    </label>
+    <label>Ranga
+        <span id="ranks" class="ranks"></span>
+    </label>
+    <label class="ranks">
+        <span>
+            <input id="differing-only" type="checkbox">
+            tylko niespójne między światami (inna cena lub brak wpisu)
+        </span>
+    </label>
+    <button id="clear-filters">Wyczyść filtry</button>
+    <button id="copy-between-worlds">Kopiuj ceny między światami...</button>
+</div>
+
+<div id="status" class="status"></div>
+
+<table>
+    <thead>
+        <tr id="header-row"></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+</table>
+
+<script>
+"use strict";
+
+const COLUMNS = [
+    "serwer", "nazwa", "poziom", "typ", "profesje", "ranga", "ulepszenie",
+    "platne_odwiazanie", "liczba", "licytacja_m", "kup_teraz_m", "smocze_lzy", "data", "grafika",
+];
+const ALL_WORLDS = "";
+// Position of each rank's frame in the game's frame sprite.
+const RANK_FRAME_OFFSETS = { "Zwykły": 0, "Unikatowy": -32, "Heroiczny": -64, "Legendarny": -128 };
+// Ranks that can be sold on the auction house, in the game's order from the weakest
+// (upgraded items and artefacts cannot be listed).
+const RANKS = ["Zwykły", "Unikatowy", "Heroiczny", "Legendarny"];
+
+let entries = [];
+let officialWorlds = [];
+// Item types in the game's order (by type number).
+let gameItemTypes = [];
+
+// ------------------------------------------------------------------ server
+
+async function request(method, path, fields) {
+    const options = { method };
+    if (fields) {
+        options.body = Object.entries(fields).map(([key, value]) => `${key}=${value ?? ""}`).join("\n");
+    }
+    const response = await fetch(path, options);
+    const text = await response.text();
+    if (!response.ok) {
+        throw new Error(text || `Błąd serwera (${response.status})`);
+    }
+    return text;
+}
+
+function entryFromCsvLine(line) {
+    const values = line.split(";");
+    return Object.fromEntries(COLUMNS.map((column, index) => [column, values[index] ?? ""]));
+}
+
+async function loadEntries() {
+    const text = await request("GET", "/auction/all");
+    entries = text.split("\n").filter((line) => line.length > 0).map(entryFromCsvLine);
+}
+
+// The world list file has a header line and `name;type` lines.
+async function loadWorlds() {
+    const text = await request("GET", "/worlds");
+    officialWorlds = text.split("\n").slice(1)
+        .map((line) => line.split(";")[0].trim())
+        .filter((name) => name);
+}
+
+// The type list file has a header line and `number;name` lines.
+async function loadItemTypes() {
+    const text = await request("GET", "/item-types");
+    gameItemTypes = text.split("\n").slice(1)
+        .map((line) => line.split(";")[1]?.trim())
+        .filter((name) => name);
+}
+
+function saveEntry(entry) {
+    return request("POST", "/auction/save", { ...entry, podmien: "tak" });
+}
+
+function deleteEntry(entry) {
+    return request("POST", "/auction/delete", entry);
+}
+
+// ------------------------------------------------------------------ prices
+
+// Gold as the auction shows it ("12.1g", "500m") to whole millions; null when unreadable.
+function parseGoldMillions(text) {
+    const match = text.trim().match(/^(\d+(?:\.\d+)?)\s*([mg])?$/i);
+    if (!match) {
+        return null;
+    }
+    const amount = Number(match[1]);
+    return Math.round(match[2]?.toLowerCase() === "g" ? amount * 1000 : amount);
+}
+
+function formatGold(millions) {
+    if (millions === "") {
+        return "";
+    }
+    const value = Number(millions);
+    return value >= 1000 ? `${value / 1000}g` : `${value}m`;
+}
+
+// Local date, not UTC, so a save just after midnight gets today's date.
+function today() {
+    const now = new Date();
+    const twoDigits = (number) => String(number).padStart(2, "0");
+    return `${now.getFullYear()}-${twoDigits(now.getMonth() + 1)}-${twoDigits(now.getDate())}`;
+}
+
+// Item fields without server, prices, piece count, date and icon: equal keys mean the same item.
+function itemKeyText(entry) {
+    const { serwer, liczba, licytacja_m, kup_teraz_m, smocze_lzy, data, grafika, ...key } = entry;
+    return JSON.stringify(key);
+}
+
+function samePricePerPiece(leftMillions, leftCount, rightMillions, rightCount) {
+    if (leftMillions === "" || rightMillions === "") {
+        return leftMillions === rightMillions;
+    }
+    return Number(leftMillions) * Number(rightCount) === Number(rightMillions) * Number(leftCount);
+}
+
+function samePrices(left, right) {
+    return samePricePerPiece(left.licytacja_m, left.liczba, right.licytacja_m, right.liczba)
+        && samePricePerPiece(left.kup_teraz_m, left.liczba, right.kup_teraz_m, right.liczba)
+        && left.smocze_lzy === right.smocze_lzy;
+}
+
+function itemName(entry) {
+    return entry.nazwa + (entry.ulepszenie !== "0" ? ` +${entry.ulepszenie}` : "");
+}
+
+function buyNowText(entry) {
+    const gold = formatGold(entry.kup_teraz_m);
+    return entry.smocze_lzy !== "" ? `${gold} + ${entry.smocze_lzy}SŁ` : gold;
+}
+
+function priceText(entry) {
+    const parts = [];
+    if (entry.licytacja_m !== "") {
+        parts.push(`licytacja ${formatGold(entry.licytacja_m)}`);
+    }
+    if (entry.kup_teraz_m !== "" || entry.smocze_lzy !== "") {
+        parts.push(`${entry.platne_odwiazanie === "tak" ? "dopłata" : "kup teraz"} ${buyNowText(entry)}`);
+    }
+    const pieces = entry.liczba !== "1" ? ` (za ${entry.liczba} szt.)` : "";
+    return (parts.join(", ") || "brak cen") + pieces;
+}
+
+// Entries of the same item on the other worlds.
+function sameItemElsewhere(entry) {
+    const key = itemKeyText(entry);
+    return entries.filter((other) => other.serwer !== entry.serwer && itemKeyText(other) === key);
+}
+
+// Worlds from the world list where the item has no entry.
+function worldsWithoutItem(entry) {
+    const withItem = new Set([entry.serwer, ...sameItemElsewhere(entry).map((other) => other.serwer)]);
+    return allWorlds().filter((world) => !withItem.has(world));
+}
+
+// True when another world has a different price per piece or no entry for the item.
+function inconsistentBetweenWorlds(entry) {
+    return worldsWithoutItem(entry).length > 0
+        || sameItemElsewhere(entry).some((other) => !samePrices(other, entry));
+}
+
+// Official worlds and every world already in the database, in alphabetical order.
+function allWorlds() {
+    return [...new Set([...officialWorlds, ...entries.map((entry) => entry.serwer)])].sort();
+}
+
+// The entry `source` moved to `world`, keeping the icon of the target entry when the source has none.
+function copiedEntry(source, world, existing) {
+    return {
+        ...source,
+        serwer: world,
+        data: today(),
+        grafika: source.grafika || existing?.grafika || "",
+    };
+}
+
+// ------------------------------------------------------------------ filters
+
+function element(id) {
+    return document.getElementById(id);
+}
+
+function fillWorlds() {
+    const select = element("world");
+    const chosen = select.value || localStorage.getItem("world") || ALL_WORLDS;
+    const worlds = allWorlds();
+    const options = worlds.map((world) => new Option(world, world));
+    select.replaceChildren(new Option("Wszystkie światy", ALL_WORLDS), ...options);
+    select.value = worlds.includes(chosen) ? chosen : ALL_WORLDS;
+}
+
+function fillRanks() {
+    const container = element("ranks");
+    const uncheckedBoxes = container.querySelectorAll("input:not(:checked)");
+    const unchecked = new Set([...uncheckedBoxes].map((input) => input.value));
+    const otherRanks = entries.map((entry) => entry.ranga).filter((rank) => !RANKS.includes(rank));
+    const ranks = [...RANKS, ...new Set(otherRanks)];
+    container.replaceChildren(...ranks.map((rank) => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = rank;
+        checkbox.checked = !unchecked.has(rank);
+        checkbox.addEventListener("change", render);
+        label.append(checkbox, ` ${rank}`);
+        return label;
+    }));
+}
+
+function fillTypes() {
+    const select = element("item-type");
+    const chosen = select.value;
+    const otherTypes = entries.map((entry) => entry.typ).filter((type) => !gameItemTypes.includes(type));
+    const types = [...gameItemTypes, ...new Set(otherTypes)];
+    select.replaceChildren(new Option("wszystkie", ""), ...types.map((type) => new Option(type, type)));
+    select.value = types.includes(chosen) ? chosen : "";
+}
+
+// Entries on `world` (or every world) that pass every filter, sorted.
+function filteredEntries(world) {
+    const name = element("name").value.trim().toLowerCase();
+    const levelMin = element("level-min").value === "" ? -Infinity : Number(element("level-min").value);
+    const levelMax = element("level-max").value === "" ? Infinity : Number(element("level-max").value);
+    const checkedRanks = element("ranks").querySelectorAll("input:checked");
+    const ranks = new Set([...checkedRanks].map((input) => input.value));
+    const differingOnly = element("differing-only").checked;
+    const enhancement = element("enhancement").value;
+    const itemType = element("item-type").value;
+    const profession = element("profession").value;
+    const unbinding = element("unbinding").value;
+    // An item without profession letters fits every profession.
+    const fitsProfession = (entry) => profession === ""
+        || entry.profesje === ""
+        || entry.profesje.includes(profession);
+    const shown = entries.filter((entry) => (world === ALL_WORLDS || entry.serwer === world)
+        && entry.nazwa.toLowerCase().includes(name)
+        && Number(entry.poziom) >= levelMin && Number(entry.poziom) <= levelMax
+        && ranks.has(entry.ranga)
+        && (enhancement === "" || entry.ulepszenie === enhancement)
+        && (itemType === "" || entry.typ === itemType)
+        && fitsProfession(entry)
+        && (unbinding === "" || entry.platne_odwiazanie === unbinding)
+        && (!differingOnly || inconsistentBetweenWorlds(entry)));
+    const compare = SORT_COMPARATORS[sorting.column] ?? SORT_COMPARATORS.poziom;
+    shown.sort((left, right) => sorting.direction * compare(left, right) || byNameThenLevel(left, right));
+    return shown;
+}
+
+// ------------------------------------------------------------------ sorting
+
+function byNameThenLevel(left, right) {
+    return left.nazwa.localeCompare(right.nazwa, "pl") || Number(left.poziom) - Number(right.poziom);
+}
+
+// Price of one piece in millions; entries without the price go last when sorting up.
+function pricePerPiece(millions, pieceCount) {
+    return millions === "" ? Infinity : Number(millions) / Number(pieceCount);
+}
+
+function byText(column) {
+    return (left, right) => left[column].localeCompare(right[column], "pl");
+}
+
+function byNumber(column) {
+    return (left, right) => Number(left[column]) - Number(right[column]);
+}
+
+function byPrice(column) {
+    return (left, right) => pricePerPiece(left[column], left.liczba)
+        - pricePerPiece(right[column], right.liczba);
+}
+
+const SORT_COMPARATORS = {
+    serwer: byText("serwer"),
+    nazwa: byNameThenLevel,
+    poziom: byNumber("poziom"),
+    ulepszenie: byNumber("ulepszenie"),
+    typ: byText("typ"),
+    profesje: byText("profesje"),
+    ranga: (left, right) => RANKS.indexOf(left.ranga) - RANKS.indexOf(right.ranga),
+    platne_odwiazanie: byText("platne_odwiazanie"),
+    liczba: byNumber("liczba"),
+    licytacja_m: byPrice("licytacja_m"),
+    kup_teraz_m: byPrice("kup_teraz_m"),
+    data: byText("data"),
+};
+
+// The sorted column and direction (1 up, -1 down), remembered in the browser.
+const sorting = loadSorting();
+
+function loadSorting() {
+    try {
+        const saved = JSON.parse(localStorage.getItem("sorting") ?? "null");
+        if (saved && SORT_COMPARATORS[saved.column] && Math.abs(saved.direction) === 1) {
+            return saved;
+        }
+    } catch (error) {
+        // A damaged saved value falls back to the default below.
+    }
+    return { column: "poziom", direction: 1 };
+}
+
+// Clicking the sorted column flips the direction; another column starts sorting up.
+function sortBy(column) {
+    if (sorting.column === column) {
+        sorting.direction = -sorting.direction;
+    } else {
+        sorting.column = column;
+        sorting.direction = 1;
+    }
+    localStorage.setItem("sorting", JSON.stringify(sorting));
+    render();
+}
+
+// ------------------------------------------------------------------ table
+
+function cell(content, className) {
+    const td = document.createElement("td");
+    if (className) {
+        td.className = className;
+    }
+    td.append(content ?? "");
+    return td;
+}
+
+function button(text, onClick) {
+    const created = document.createElement("button");
+    created.textContent = text;
+    created.addEventListener("click", onClick);
+    return created;
+}
+
+function checkbox(checked, onChange) {
+    const created = document.createElement("input");
+    created.type = "checkbox";
+    created.checked = checked;
+    if (onChange) {
+        created.addEventListener("change", onChange);
+    }
+    return created;
+}
+
+function showStatus(text, isError = false) {
+    const status = element("status");
+    status.textContent = text;
+    status.classList.toggle("error", isError);
+}
+
+// The item picture on top of its rank frame, as in the game.
+function iconCell(entry) {
+    const slot = document.createElement("div");
+    slot.className = "item-slot";
+    const offset = RANK_FRAME_OFFSETS[entry.ranga];
+    if (offset !== undefined) {
+        const frame = document.createElement("div");
+        frame.className = "frame";
+        frame.style.backgroundPosition = `${offset}px 0px`;
+        slot.append(frame);
+    }
+    if (entry.grafika !== "") {
+        const image = document.createElement("img");
+        image.src = entry.grafika;
+        image.alt = "";
+        slot.append(image);
+    }
+    return cell(slot, "icon");
+}
+
+// The item name with a "≠" mark when another world has a different price per piece,
+// and the number of worlds without an entry for the item.
+function nameCell(entry) {
+    const td = cell(entry.nazwa);
+    const different = sameItemElsewhere(entry).filter((other) => !samePrices(other, entry));
+    const missing = worldsWithoutItem(entry);
+    if (different.length > 0) {
+        const mark = document.createElement("span");
+        mark.className = "differs";
+        mark.textContent = "≠";
+        mark.title = "Inne ceny na światach:\n"
+            + different.map((other) => `${other.serwer}: ${priceText(other)}`).join("\n");
+        td.append(mark);
+    }
+    if (missing.length > 0) {
+        const mark = document.createElement("span");
+        mark.className = "missing";
+        mark.textContent = `brak na ${missing.length} św.`;
+        mark.title = `Brak wpisu na światach:\n${missing.join(", ")}`;
+        td.append(mark);
+    }
+    return td;
+}
+
+// Column titles with the sort column they control; prices sort by the price of one piece.
+const HEADER_COLUMNS = [
+    ["", null],
+    ["Nazwa", "nazwa"],
+    ["Poziom", "poziom"],
+    ["Ulepszenie", "ulepszenie"],
+    ["Typ", "typ"],
+    ["Profesje", "profesje"],
+    ["Ranga", "ranga"],
+    ["Płatne odwiązanie", "platne_odwiazanie"],
+    ["Sztuk", "liczba"],
+    ["Licytacja", "licytacja_m"],
+    ["Kup teraz / dopłata", "kup_teraz_m"],
+    ["Zapisano", "data"],
+    ["", null],
+];
+
+function renderHeader(showWorld) {
+    const columns = [...HEADER_COLUMNS];
+    if (showWorld) {
+        columns.splice(1, 0, ["Świat", "serwer"]);
+    }
+    element("header-row").replaceChildren(...columns.map(([title, column]) => {
+        const th = document.createElement("th");
+        th.textContent = title;
+        if (column) {
+            const active = sorting.column === column;
+            const arrow = document.createElement("span");
+            arrow.className = active ? "arrow" : "arrow inactive";
+            arrow.textContent = !active ? "↕" : sorting.direction === 1 ? "▲" : "▼";
+            th.className = "sortable";
+            th.title = "Kliknij, aby sortować";
+            th.append(arrow);
+            th.addEventListener("click", () => sortBy(column));
+        }
+        return th;
+    }));
+}
+
+function clearFilters() {
+    const fieldIds = ["name", "level-min", "level-max", "enhancement", "item-type", "profession",
+        "unbinding"];
+    for (const id of fieldIds) {
+        element(id).value = "";
+    }
+    element("differing-only").checked = false;
+    for (const box of element("ranks").querySelectorAll("input")) {
+        box.checked = true;
+    }
+    render();
+}
+
+function viewRow(entry, showWorld) {
+    const row = document.createElement("tr");
+    row.append(iconCell(entry));
+    if (showWorld) {
+        row.append(cell(entry.serwer));
+    }
+    // Paid unbinding belongs to the item key, so it is only shown, as a green tick or a red cross.
+    const paidUnbinding = entry.platne_odwiazanie === "tak";
+    const unbinding = document.createElement("span");
+    unbinding.className = paidUnbinding ? "yes" : "no";
+    unbinding.textContent = paidUnbinding ? "✓" : "✗";
+    unbinding.title = paidUnbinding ? "tak" : "nie";
+    row.append(
+        nameCell(entry),
+        cell(entry.poziom),
+        cell(`+${entry.ulepszenie}`),
+        cell(entry.typ),
+        cell(entry.profesje || "wszystkie"),
+        cell(entry.ranga),
+        cell(unbinding),
+        cell(entry.liczba),
+        cell(formatGold(entry.licytacja_m), "bid"),
+        cell(buyNowText(entry), "buy-now"),
+        cell(entry.data),
+    );
+    const actions = cell("", "actions");
+    actions.append(
+        button("Edytuj", () => row.replaceWith(editRow(entry, showWorld))),
+        " ",
+        button("Kopiuj na światy...", () => openItemCopyDialog(entry)),
+        " ",
+        button("Usuń", () => removeEntry(entry)),
+    );
+    row.append(actions);
+    return row;
+}
+
+function priceInput(value) {
+    const input = document.createElement("input");
+    input.className = "price";
+    input.value = value;
+    return input;
+}
+
+// The same row with price fields; with paid unbinding the bid is replaced by Dragon Tears.
+function editRow(entry, showWorld) {
+    const row = viewRow(entry, showWorld);
+    const cells = row.children;
+    const paidUnbinding = entry.platne_odwiazanie === "tak";
+    const bidInput = priceInput(formatGold(entry.licytacja_m));
+    const buyNowInput = priceInput(formatGold(entry.kup_teraz_m));
+    const tearsInput = priceInput(entry.smocze_lzy);
+    tearsInput.placeholder = "SŁ";
+    row.querySelector("td.bid").replaceChildren(paidUnbinding ? "" : bidInput);
+    const tearsPart = paidUnbinding ? [" + ", tearsInput] : [];
+    row.querySelector("td.buy-now").replaceChildren(buyNowInput, ...tearsPart);
+    const actions = cells[cells.length - 1];
+    actions.replaceChildren(
+        button("Zapisz", async () => {
+            const bid = bidInput.value.trim() === "" ? "" : parseGoldMillions(bidInput.value);
+            const buyNow = buyNowInput.value.trim() === "" ? "" : parseGoldMillions(buyNowInput.value);
+            const tears = tearsInput.value.trim().replace(/\D/g, "");
+            if (bid === null || buyNow === null) {
+                showStatus("Nie rozumiem kwoty. Przykłady: 100m, 12.1g, 24g.", true);
+                return;
+            }
+            const changed = {
+                ...entry,
+                licytacja_m: paidUnbinding ? "" : String(bid),
+                kup_teraz_m: String(buyNow),
+                smocze_lzy: paidUnbinding ? tears : "",
+                data: today(),
+            };
+            await runAndRefresh(() => saveEntry(changed), `Zapisano: ${itemName(entry)} (${entry.serwer})`);
+        }),
+        " ",
+        button("Anuluj", render),
+    );
+    return row;
+}
+
+async function refresh() {
+    await loadEntries();
+    fillWorlds();
+    fillRanks();
+    fillTypes();
+    render();
+}
+
+async function runAndRefresh(action, message) {
+    try {
+        await action();
+        await refresh();
+        showStatus(message);
+    } catch (error) {
+        showStatus(error.message, true);
+    }
+}
+
+async function removeEntry(entry) {
+    if (!confirm(`Usunąć z bazy "${itemName(entry)}" na świecie ${entry.serwer}?`)) {
+        return;
+    }
+    await runAndRefresh(() => deleteEntry(entry), `Usunięto: ${itemName(entry)} (${entry.serwer})`);
+}
+
+function render() {
+    localStorage.setItem("world", element("world").value);
+    const showWorld = element("world").value === ALL_WORLDS;
+    renderHeader(showWorld);
+    const shown = filteredEntries(element("world").value);
+    element("rows").replaceChildren(...shown.map((entry) => viewRow(entry, showWorld)));
+    if (!element("status").classList.contains("error")) {
+        showStatus(`Wpisów: ${shown.length} z ${entries.length}`);
+    }
+}
+
+// ------------------------------------------------------------------ copying between worlds
+
+function openDialog(title) {
+    const overlay = document.createElement("div");
+    overlay.className = "dialog-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "dialog";
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    dialog.append(heading);
+    overlay.append(dialog);
+    document.body.append(overlay);
+    return { dialog, close: () => overlay.remove() };
+}
+
+function paragraph(text, className) {
+    const created = document.createElement("div");
+    created.className = className ?? "row";
+    created.textContent = text;
+    return created;
+}
+
+// One planned copy: `state` is "new" (no entry on the world), "different" or "same".
+function plannedCopy(source, world) {
+    const sourceKey = itemKeyText(source);
+    const existing = entries.find((entry) => entry.serwer === world && itemKeyText(entry) === sourceKey);
+    const state = !existing ? "new" : samePrices(existing, source) ? "same" : "different";
+    return { source, world, existing, state, selected: false };
+}
+
+const STATE_LABELS = { new: "brak wpisu", different: "inna cena", same: "bez zmian" };
+
+// A table of planned copies with a checkbox each; rows without changes cannot be selected.
+function plannedCopyTable(copies, showItem, onChange) {
+    const table = document.createElement("table");
+    const header = document.createElement("tr");
+    const titles = showItem
+        ? ["", "Przedmiot", "Świat", "Teraz", "Nowa cena", "Stan"]
+        : ["", "Świat", "Teraz", "Stan"];
+    header.append(...titles.map((title) => {
+        const th = document.createElement("th");
+        th.textContent = title;
+        return th;
+    }));
+    table.append(header);
+    for (const copy of copies) {
+        const row = document.createElement("tr");
+        row.className = `state-${copy.state}`;
+        const box = checkbox(copy.selected, () => {
+            copy.selected = box.checked;
+            onChange();
+        });
+        box.disabled = copy.state === "same";
+        copy.checkbox = box;
+        row.append(cell(box));
+        if (showItem) {
+            row.append(cell(itemName(copy.source)));
+        }
+        row.append(cell(copy.world), cell(copy.existing ? priceText(copy.existing) : "—"));
+        if (showItem) {
+            row.append(cell(priceText(copy.source)));
+        }
+        row.append(cell(STATE_LABELS[copy.state]));
+        table.append(row);
+    }
+    return table;
+}
+
+function selectWhere(copies, condition) {
+    for (const copy of copies) {
+        copy.selected = copy.state !== "same" && condition(copy);
+        copy.checkbox.checked = copy.selected;
+    }
+}
+
+async function saveCopies(copies, close) {
+    const chosen = copies.filter((copy) => copy.selected);
+    await runAndRefresh(async () => {
+        for (const copy of chosen) {
+            await saveEntry(copiedEntry(copy.source, copy.world, copy.existing));
+        }
+    }, `Skopiowano ceny: ${chosen.length}`);
+    close();
+}
+
+function saveButton(copies, close) {
+    const created = button("", () => saveCopies(copies, close));
+    const update = () => {
+        const count = copies.filter((copy) => copy.selected).length;
+        created.textContent = `Kopiuj na zaznaczone (${count})`;
+        created.disabled = count === 0;
+    };
+    update();
+    return { button: created, update };
+}
+
+// Copies one item's price to chosen worlds. Worlds without an entry are selected at first;
+// worlds with a different price wait for a choice.
+function openItemCopyDialog(entry) {
+    const { dialog, close } = openDialog(`Kopiuj: ${itemName(entry)} (cena z ${entry.serwer})`);
+    dialog.append(paragraph(priceText(entry), "note"));
+    const copies = allWorlds()
+        .filter((world) => world !== entry.serwer)
+        .map((world) => plannedCopy(entry, world));
+    for (const copy of copies) {
+        copy.selected = copy.state === "new";
+    }
+    const save = saveButton(copies, close);
+    const table = plannedCopyTable(copies, false, save.update);
+    const selectCopies = (condition) => {
+        selectWhere(copies, condition);
+        save.update();
+    };
+    const quick = document.createElement("div");
+    quick.className = "row";
+    quick.append(
+        "Zaznacz:",
+        button("wszystkie", () => selectCopies(() => true)),
+        button("tylko bez wpisu", () => selectCopies((copy) => copy.state === "new")),
+        button("tylko z inną ceną", () => selectCopies((copy) => copy.state === "different")),
+        button("żadne", () => selectCopies(() => false)),
+    );
+    const actions = document.createElement("div");
+    actions.className = "row";
+    actions.append(save.button, button("Anuluj", close));
+    dialog.append(quick, table, actions);
+}
+
+// Copies the prices of all filtered items of one world to chosen worlds, after a preview.
+function openBulkCopyDialog() {
+    const { dialog, close } = openDialog("Kopiuj ceny między światami");
+    const worlds = allWorlds();
+    const sourceSelect = document.createElement("select");
+    sourceSelect.append(...worlds.map((world) => new Option(world, world)));
+    const shownWorld = element("world").value;
+    sourceSelect.value = shownWorld !== ALL_WORLDS ? shownWorld : (entries[0]?.serwer ?? worlds[0]);
+
+    const targets = document.createElement("div");
+    targets.className = "row";
+    const targetBoxes = new Map();
+    const fillTargets = () => {
+        targets.replaceChildren("Na światy:");
+        targetBoxes.clear();
+        for (const world of worlds.filter((name) => name !== sourceSelect.value)) {
+            const label = document.createElement("label");
+            const box = checkbox(true);
+            targetBoxes.set(world, box);
+            label.append(box, world);
+            targets.append(label);
+        }
+        targets.append(
+            button("wszystkie", () => targetBoxes.forEach((box) => { box.checked = true; })),
+            button("żadne", () => targetBoxes.forEach((box) => { box.checked = false; })),
+        );
+    };
+    sourceSelect.addEventListener("change", fillTargets);
+    fillTargets();
+
+    const modes = document.createElement("div");
+    modes.className = "row";
+    modes.append("Gdy na docelowym świecie jest inna cena:");
+    const modeChoices = [["keep", "zostaw cenę docelowego świata"], ["overwrite", "nadpisz"],
+        ["choose", "pokaż różnice i pozwól wybrać"]];
+    for (const [value, text] of modeChoices) {
+        const label = document.createElement("label");
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = "copy-mode";
+        radio.value = value;
+        radio.checked = value === "choose";
+        label.append(radio, text);
+        modes.append(label);
+    }
+
+    const source = document.createElement("div");
+    source.className = "row";
+    source.append("Ze świata:", sourceSelect);
+    const preview = document.createElement("div");
+    dialog.append(
+        source,
+        targets,
+        modes,
+        paragraph("Kopiowane są tylko przedmioty widoczne przy obecnych filtrach tabeli.", "note"),
+    );
+
+    const showPreview = () => {
+        const mode = modes.querySelector("input:checked").value;
+        const chosenTargets = [...targetBoxes].filter(([, box]) => box.checked).map(([world]) => world);
+        const copies = filteredEntries(sourceSelect.value)
+            .flatMap((entry) => chosenTargets.map((world) => plannedCopy(entry, world)))
+            .filter((copy) => copy.state !== "same" && !(mode === "keep" && copy.state === "different"));
+        for (const copy of copies) {
+            copy.selected = copy.state === "new" || mode === "overwrite";
+        }
+        const counts = { new: 0, different: 0 };
+        copies.forEach((copy) => { counts[copy.state] += 1; });
+        const save = saveButton(copies, close);
+        preview.replaceChildren(
+            paragraph(`Nowe wpisy: ${counts.new}, inne ceny: ${counts.different}`),
+            plannedCopyTable(copies, true, save.update),
+        );
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.append(save.button, button("Anuluj", close));
+        preview.append(actions);
+    };
+
+    const buttons = document.createElement("div");
+    buttons.className = "row";
+    buttons.append(button("Pokaż podgląd", showPreview), button("Zamknij", close));
+    dialog.append(buttons, preview);
+}
+
+// ------------------------------------------------------------------ start
+
+const filterIds = ["world", "name", "level-min", "level-max", "differing-only", "enhancement", "item-type",
+    "profession", "unbinding"];
+for (const id of filterIds) {
+    element(id).addEventListener("input", render);
+}
+element("copy-between-worlds").addEventListener("click", openBulkCopyDialog);
+element("clear-filters").addEventListener("click", clearFilters);
+
+Promise.all([loadEntries(), loadWorlds(), loadItemTypes()]).then(() => {
+    fillWorlds();
+    fillRanks();
+    fillTypes();
+    render();
+}, (error) => showStatus(error.message, true));
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+#{
+    Reading and writing whole text files through the C standard library.
+#}
+import core.builtins.*;
+import core.containers.*;
+
+extern("C") {
+    fundecl fopen(path: cptr char, mode: cptr char) -> cptr mut u8;
+    fundecl fread(buffer: cptr mut u8, size: u64, count: u64, file: cptr mut u8) -> u64;
+    fundecl fwrite(data: cptr u8, size: u64, count: u64, file: cptr mut u8) -> u64;
+    fundecl fclose(file: cptr mut u8) -> i32;
+    fundecl rename(oldPath: cptr char, newPath: cptr char) -> i32;
+}
+
+#{
+    C functions need text that ends with a zero byte.
+#}
+fun zeroTerminated(text: str) -> String = {
+    var result = text.toString();
+    result.append('\0');
+    return result;
+}
+
+fun cText(text: ref String) -> cptr char = {
+    return builtins.ptr_from_slice[char](text.asSlice()) as cptr char;
+}
+
+#{
+    Returns none when the file cannot be opened, e.g. it does not exist.
+#}
+fun readText(path: str) -> ?String = {
+    let cPath = zeroTerminated(path);
+    let mode = zeroTerminated("rb");
+    let file = fopen(cText(&cPath), cText(&mode));
+    if (file as u64 == 0u64) {
+        return none;
+    }
+
+    var content: String;
+    var buffer: u8[4096];
+    var received = fread(&buffer[0] as cptr mut u8, 1u64, 4096u64, file);
+    while (received > 0u64) {
+        var index: i64 = 0;
+        while (index < received as i64) {
+            content.append(buffer[index] as char);
+            index += 1;
+        }
+        received = fread(&buffer[0] as cptr mut u8, 1u64, 4096u64, file);
+    }
+    fclose(file);
+    return content;
+}
+
+#{
+    Writes `text` to a temporary file first and then renames it over `path`,
+    so a failed write never leaves `path` half written. Returns false on failure.
+#}
+fun replaceText(path: str, text: str) -> bool = {
+    let cPath = zeroTerminated(path);
+    var temporaryPath = path.toString();
+    temporaryPath.append(".tmp");
+    let cTemporaryPath = zeroTerminated(temporaryPath.asSlice());
+    let mode = zeroTerminated("wb");
+
+    let file = fopen(cText(&cTemporaryPath), cText(&mode));
+    if (file as u64 == 0u64) {
+        return false;
+    }
+    let data = builtins.ptr_from_slice[char](text) as cptr u8;
+    let written = fwrite(data, 1u64, text.length() as u64, file);
+    let closed = fclose(file) == 0;
+    if (written != text.length() as u64 or not closed) {
+        return false;
+    }
+    return rename(cText(&cTemporaryPath), cText(&cPath)) == 0;
+}

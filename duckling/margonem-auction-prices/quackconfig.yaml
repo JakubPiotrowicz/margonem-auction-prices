@@ -1,0 +1,13 @@
+metadata:
+  name: margonem-auction-prices
+  version: '1.0.0'
+  description: Database of auction prices for Margonem items, stored in a CSV file
+dependencies:
+  files:
+    source:
+      name: margonem-files
+      path: ../margonem-files
+  string-utils:
+    source:
+      name: margonem-string-utils
+      path: ../margonem-string-utils

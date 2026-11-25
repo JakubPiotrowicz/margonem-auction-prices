@@ -1,0 +1,107 @@
+#{
+    The smallest piece of HTTP/1.1 the add-on server needs: one request per connection,
+    a body only with `Content-Length`, a text or HTML response.
+#}
+import core.builtins.*;
+import core.containers.*;
+import net;
+import string_utils;
+
+class Request {
+    method: String;
+    path: String;
+    body: String;
+}
+
+#{
+    Reads one whole request: waits for the end of the headers, then for the full body.
+    Headers other than `Content-Length` are skipped.
+    Returns none when the client disconnects early or the first line is not `METHOD PATH ...`.
+#}
+fun readRequest(connection: ref net.Connection) -> ?Request = {
+    var raw: String;
+    var foundHeaderEnd: ?i64 = none;
+    while (foundHeaderEnd.isEmpty()) {
+        if (not connection.receiveInto(&raw)) {
+            return none;
+        }
+        foundHeaderEnd = string_utils.findText(raw.asSlice(), "\r\n\r\n", 0);
+    }
+    let headerEnd = foundHeaderEnd.value();
+    let bodyStart = headerEnd + 4;
+    let bodyEnd = bodyStart + contentLength(raw.asSlice(), headerEnd).valueOr(0);
+    while (raw.length() < bodyEnd) {
+        if (not connection.receiveInto(&raw)) {
+            return none;
+        }
+    }
+
+    let text = raw.asSlice();
+    let methodEnd = string_utils.findText(text, " ", 0);
+    if (methodEnd.isEmpty()) {
+        return none;
+    }
+    let pathStart = methodEnd.value() + 1;
+    let pathEnd = string_utils.findText(text, " ", pathStart);
+    if (pathEnd.isEmpty()) {
+        return none;
+    }
+    return Request(
+        string_utils.substring(text, 0, methodEnd.value()),
+        string_utils.substring(text, pathStart, pathEnd.value()),
+        string_utils.substring(text, bodyStart, bodyEnd)
+    );
+}
+
+#{
+    Sends `body` as a plain text response and tells the client the connection will close.
+    `status` is the status line without the protocol, e.g. "200 OK".
+    Returns false when sending failed.
+#}
+fun sendResponse(connection: ref net.Connection, status: str, body: str) -> bool = {
+    return sendTypedResponse(connection, status, "text/plain; charset=utf-8", body);
+}
+
+#{
+    Like `sendResponse`, with `contentType` as the Content-Type header,
+    e.g. "text/html; charset=utf-8".
+#}
+fun sendTypedResponse(
+    connection: ref net.Connection, status: str, contentType: str, body: str
+) -> bool = {
+    var response = "HTTP/1.1 ".toString();
+    response.append(status);
+    response.append("\r\nContent-Type: ");
+    response.append(contentType);
+    response.append("\r\nContent-Length: ");
+    response.append(body.length().toString());
+    response.append("\r\nConnection: close\r\n\r\n");
+    response.append(body);
+    return connection.send(response.asSlice());
+}
+
+#{
+    Reads `Content-Length` from the headers that end at `headerEnd`, ignoring letter case
+    in the header name. Returns none when the header is missing.
+#}
+fun contentLength(text: str, headerEnd: i64) -> ?i64 = {
+    let header = "\r\ncontent-length:";
+    var position: i64 = 0;
+    while (position < headerEnd and not string_utils.matchesAt(text, header, position, true)) {
+        position += 1;
+    }
+    if (position >= headerEnd) {
+        return none;
+    }
+
+    position += header.length();
+    while (text[position] == ' ') {
+        position += 1;
+    }
+    var length: i64 = 0;
+    while (text[position] >= '0' and text[position] <= '9') {
+        length = length * 10 + (text[position] as i64 - '0' as i64);
+        position += 1;
+    }
+    return length;
+}
