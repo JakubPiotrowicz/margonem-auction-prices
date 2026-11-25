@@ -129,8 +129,6 @@ Samo budowanie: `duck build` w tym samym katalogu.
 
 Aktualizacja skryptu w Tampermonkeyu: wkleić nową wersję pliku albo udostępnić katalog `tampermonkey/` lokalnie (`python3 -m http.server 48731 --bind 127.0.0.1`) i otworzyć w Chrome `http://127.0.0.1:48731/margonem-auction-prices.user.js` - Tampermonkey sam pokaże przycisk instalacji lub aktualizacji.
 
-Na GitHubie warto dodać repozytorium tematy (topics) `duckling` i `duckling-lang`.
-
 ## Licencja
 
 MIT - patrz [LICENSE](LICENSE).
